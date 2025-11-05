@@ -1,0 +1,6 @@
+# Python dependencies for the model will go here.
+# e.g.,
+# pandas
+# scikit-learn
+# tensorflow
+# spotipy
