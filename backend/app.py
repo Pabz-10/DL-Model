@@ -5,7 +5,7 @@ from flask import (
     render_template 
 )
 
-# create the instance of the app
+# create the instance of the appsss
 app = Flask(__name__)
 
 @app.route('/')
