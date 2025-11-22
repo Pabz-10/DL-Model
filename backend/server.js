@@ -74,64 +74,57 @@ const fetch = require("node-fetch");
 
 // ... (existing code) ...
 
-// Endpoint to fetch user's top tracks and their audio features.
-app.get("/recommendations", async (req, res) => {
-	try {
-		const accessToken = spotifyApi.getAccessToken();
-		if (!accessToken) {
-			return res.status(401).json({ error: "User not authenticated" });
-		}
-
-		console.log("Manually fetching top tracks with token:", accessToken);
-
-		// Bypassing the library to make a direct API call
-		const topTracksResponse = await fetch(
-			"https://api.spotify.com/v1/me/top/tracks?limit=50",
-			{
-				headers: {
-					Authorization: `Bearer ${accessToken}`,
-				},
-			}
-		);
-
-		if (!topTracksResponse.ok) {
-			const errorBody = await topTracksResponse.json();
-			console.error("Direct API call failed!", errorBody);
-			return res.status(topTracksResponse.status).json(errorBody);
-		}
-
-		const topTracks = await topTracksResponse.json();
-		const trackIds = topTracks.items.map((track) => track.id);
-
-		if (trackIds.length === 0) {
-			return res.json({ message: "No top tracks found for the user." });
-		}
-
-    // We can still use the library for the next call, as it's a different endpoint
-    const audioFeaturesResponse = await fetch(`https://api.spotify.com/v1/audio-features?ids=${trackIds.join(',')}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-
-    if (!audioFeaturesResponse.ok) {
-      const errorBody = await audioFeaturesResponse.json();
-      console.error('Direct API call for audio features failed!', errorBody);
-      return res.status(audioFeaturesResponse.status).json(errorBody);
+// Endpoint to generate recommendations based on user's top artists' genres.
+app.get('/recommendations', async (req, res) => {
+  try {
+    const accessToken = spotifyApi.getAccessToken();
+    if (!accessToken) {
+      return res.status(401).json({ error: 'User not authenticated' });
     }
 
-    const audioFeatures = await audioFeaturesResponse.json();
+    // 1. Get User's Top Artists to extract genres
+    const topArtistsResponse = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10', {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    if (!topArtistsResponse.ok) throw new Error('Failed to fetch top artists');
+    const topArtists = await topArtistsResponse.json();
 
-    const recommendationsData = {
-      topTracks: topTracks.items,
-      audioFeatures: audioFeatures.audio_features
-    };
+    if (!topArtists.items || topArtists.items.length === 0) {
+      console.log("No top artists found for user.");
+      return res.json({ recommendations: [] });
+    }
 
-		res.json(recommendationsData);
-	} catch (err) {
-		console.error("Something went wrong in /recommendations endpoint!", err);
-		res.status(500).json({ error: "Something went wrong!" });
-	}
+    // 2. Select Seed Genres from the artists
+    const allGenres = topArtists.items.flatMap(artist => artist.genres);
+    const uniqueGenres = [...new Set(allGenres)];
+    
+    // Shuffle and pick up to 2 genres for variety
+    const seedGenres = uniqueGenres.sort(() => 0.5 - Math.random()).slice(0, 2);
+
+    if (seedGenres.length === 0) {
+      console.log("Could not find any genres from the user's top artists.");
+      return res.json({ recommendations: [] });
+    }
+    console.log("Using seed genres:", seedGenres);
+
+    // 3. Search for Tracks by Genre
+    const searchQuery = seedGenres.map(genre => `genre:"${genre}"`).join(' ');
+    const searchResponse = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(searchQuery)}&type=track&limit=20`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    if (!searchResponse.ok) throw new Error('Failed to search for tracks');
+    
+    const searchResult = await searchResponse.json();
+    const recommendations = searchResult.tracks ? searchResult.tracks.items : [];
+    
+    console.log("Total recommendations found:", recommendations.length);
+    
+    res.json({ recommendations });
+
+  } catch (err) {
+    console.error('Something went wrong in /recommendations endpoint!', err);
+    res.status(500).json({ error: 'Something went wrong!' });
+  }
 });
 
 // Starts the Express server.
