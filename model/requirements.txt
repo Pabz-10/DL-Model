@@ -1,6 +1,9 @@
-# Python dependencies for the model will go here.
-# e.g.,
-# pandas
-# scikit-learn
-# tensorflow
-# spotipy
+# Core data and ML libraries
+pandas
+scikit-learn
+
+# For creating the model API
+Flask
+
+# For saving/loading the trained model
+joblib

@@ -8,7 +8,10 @@ const PORT = process.env.PORT || 3000;
 
 // Define the scopes for Spotify authorization.
 // These scopes determine what permissions the app is asking from the user.
-const scopes = ["user-top-read"];
+const scopes = [
+  'user-top-read',
+  'playlist-modify-public'
+];
 
 // Initialize Spotify API client with credentials and redirect URI.
 const spotifyApi = new SpotifyWebApi({
@@ -74,7 +77,6 @@ const fetch = require("node-fetch");
 
 // ... (existing code) ...
 
-// Endpoint to generate recommendations based on user's top artists' genres.
 app.get('/recommendations', async (req, res) => {
   try {
     const accessToken = spotifyApi.getAccessToken();
@@ -82,7 +84,7 @@ app.get('/recommendations', async (req, res) => {
       return res.status(401).json({ error: 'User not authenticated' });
     }
 
-    // 1. Get User's Top Artists to extract genres
+    // --- Step 1: Get User's Top Artists and their genres ---
     const topArtistsResponse = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10', {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
@@ -90,24 +92,18 @@ app.get('/recommendations', async (req, res) => {
     const topArtists = await topArtistsResponse.json();
 
     if (!topArtists.items || topArtists.items.length === 0) {
-      console.log("No top artists found for user.");
-      return res.json({ recommendations: [] });
+      return res.json({ message: "Could not find top artists." });
     }
 
-    // 2. Select Seed Genres from the artists
+    // --- Step 2: Generate Recommendations based on Genre Search ---
     const allGenres = topArtists.items.flatMap(artist => artist.genres);
     const uniqueGenres = [...new Set(allGenres)];
-    
-    // Shuffle and pick up to 2 genres for variety
     const seedGenres = uniqueGenres.sort(() => 0.5 - Math.random()).slice(0, 2);
 
     if (seedGenres.length === 0) {
-      console.log("Could not find any genres from the user's top artists.");
-      return res.json({ recommendations: [] });
+      return res.json({ message: "Could not find any genres from your top artists." });
     }
-    console.log("Using seed genres:", seedGenres);
 
-    // 3. Search for Tracks by Genre
     const searchQuery = seedGenres.map(genre => `genre:"${genre}"`).join(' ');
     const searchResponse = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(searchQuery)}&type=track&limit=20`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
@@ -115,11 +111,40 @@ app.get('/recommendations', async (req, res) => {
     if (!searchResponse.ok) throw new Error('Failed to search for tracks');
     
     const searchResult = await searchResponse.json();
-    const recommendations = searchResult.tracks ? searchResult.tracks.items : [];
+    const recommendedUris = searchResult.tracks ? searchResult.tracks.items.map(t => t.uri) : [];
+
+    if (recommendedUris.length === 0) {
+      return res.json({ message: "Could not find any recommendations for the selected genres." });
+    }
+
+    // --- Step 3: Create a new playlist and add tracks ---
+    const meResponse = await fetch('https://api.spotify.com/v1/me', {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    if (!meResponse.ok) throw new Error('Failed to get user profile');
+    const me = await meResponse.json();
+    const userId = me.id;
+
+    const createPlaylistResponse = await fetch(`https://api.spotify.com/v1/users/${userId}/playlists`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: "Song Recommender Picks",
+        description: "Songs recommended for you based on your top genres.",
+        public: true
+      })
+    });
+    if (!createPlaylistResponse.ok) throw new Error('Failed to create playlist');
+    const newPlaylist = await createPlaylistResponse.json();
+
+    await fetch(`https://api.spotify.com/v1/playlists/${newPlaylist.id}/tracks`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uris: recommendedUris })
+    });
     
-    console.log("Total recommendations found:", recommendations.length);
-    
-    res.json({ recommendations });
+    console.log('Successfully created playlist:', newPlaylist.external_urls.spotify);
+    res.json({ playlist_url: newPlaylist.external_urls.spotify });
 
   } catch (err) {
     console.error('Something went wrong in /recommendations endpoint!', err);
