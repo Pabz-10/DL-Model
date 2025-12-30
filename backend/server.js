@@ -8,10 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 // Define the scopes for Spotify authorization.
 // These scopes determine what permissions the app is asking from the user.
-const scopes = [
-  'user-top-read',
-  'playlist-modify-public'
-];
+const scopes = ["user-top-read", "playlist-modify-public"];
 
 // Initialize Spotify API client with credentials and redirect URI.
 const spotifyApi = new SpotifyWebApi({
@@ -77,79 +74,107 @@ const fetch = require("node-fetch");
 
 // ... (existing code) ...
 
-app.get('/recommendations', async (req, res) => {
-  try {
-    const accessToken = spotifyApi.getAccessToken();
-    if (!accessToken) {
-      return res.status(401).json({ error: 'User not authenticated' });
-    }
+app.get("/recommendations", async (req, res) => {
+	try {
+		const accessToken = spotifyApi.getAccessToken();
+		if (!accessToken) {
+			return res.status(401).json({ error: "User not authenticated" });
+		}
 
-    // --- Step 1: Get User's Top Artists and their genres ---
-    const topArtistsResponse = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10', {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    if (!topArtistsResponse.ok) throw new Error('Failed to fetch top artists');
-    const topArtists = await topArtistsResponse.json();
+		// --- Step 1: Get User's Top Tracks to send to the model ---
+		const topTracksResponse = await fetch(
+			"https://api.spotify.com/v1/me/top/tracks?limit=20",
+			{
+				headers: { Authorization: `Bearer ${accessToken}` },
+			}
+		);
+		if (!topTracksResponse.ok)
+			throw new Error("Failed to fetch user top tracks");
+		const topTracks = await topTracksResponse.json();
+		const topTrackUris = topTracks.items.map((track) => track.uri);
 
-    if (!topArtists.items || topArtists.items.length === 0) {
-      return res.json({ message: "Could not find top artists." });
-    }
+		if (topTrackUris.length === 0) {
+			return res.json({ recommendations: [] });
+		}
 
-    // --- Step 2: Generate Recommendations based on Genre Search ---
-    const allGenres = topArtists.items.flatMap(artist => artist.genres);
-    const uniqueGenres = [...new Set(allGenres)];
-    const seedGenres = uniqueGenres.sort(() => 0.5 - Math.random()).slice(0, 2);
+		// --- Step 2: Call the Python Model API ---
+		console.log("Sending user top tracks to Python model API...");
+		const modelResponse = await fetch("http://127.0.0.1:5000/predict", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ track_uris: topTrackUris }),
+		});
 
-    if (seedGenres.length === 0) {
-      return res.json({ message: "Could not find any genres from your top artists." });
-    }
+		if (!modelResponse.ok) {
+			console.error(
+				"Python model API returned an error:",
+				await modelResponse.text()
+			);
+			throw new Error("Failed to get recommendations from model API");
+		}
 
-    const searchQuery = seedGenres.map(genre => `genre:"${genre}"`).join(' ');
-    const searchResponse = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(searchQuery)}&type=track&limit=20`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    if (!searchResponse.ok) throw new Error('Failed to search for tracks');
-    
-    const searchResult = await searchResponse.json();
-    const recommendedUris = searchResult.tracks ? searchResult.tracks.items.map(t => t.uri) : [];
+		const modelResult = await modelResponse.json();
+		const recommendedUris = modelResult.recommendations;
+		console.log("Received recommendations from model:", recommendedUris);
 
-    if (recommendedUris.length === 0) {
-      return res.json({ message: "Could not find any recommendations for the selected genres." });
-    }
+		if (recommendedUris.length === 0) {
+			return res.json({
+				message: "No recommendations returned from the model.",
+			});
+		}
 
-    // --- Step 3: Create a new playlist and add tracks ---
-    const meResponse = await fetch('https://api.spotify.com/v1/me', {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    if (!meResponse.ok) throw new Error('Failed to get user profile');
-    const me = await meResponse.json();
-    const userId = me.id;
+		// --- Step 3: Create a new playlist and add tracks ---
+		// First, get the current user's ID
+		const meResponse = await fetch("https://api.spotify.com/v1/me", {
+			headers: { Authorization: `Bearer ${accessToken}` },
+		});
+		if (!meResponse.ok) throw new Error("Failed to get user profile");
+		const me = await meResponse.json();
+		const userId = me.id;
 
-    const createPlaylistResponse = await fetch(`https://api.spotify.com/v1/users/${userId}/playlists`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: "Song Recommender Picks",
-        description: "Songs recommended for you based on your top genres.",
-        public: true
-      })
-    });
-    if (!createPlaylistResponse.ok) throw new Error('Failed to create playlist');
-    const newPlaylist = await createPlaylistResponse.json();
+		// Create a new playlist
+		const createPlaylistResponse = await fetch(
+			`https://api.spotify.com/v1/users/${userId}/playlists`,
+			{
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					name: "Song Recommender Picks",
+					description: "Songs recommended for you by our model.",
+					public: true,
+				}),
+			}
+		);
+		if (!createPlaylistResponse.ok)
+			throw new Error("Failed to create playlist");
+		const newPlaylist = await createPlaylistResponse.json();
 
-    await fetch(`https://api.spotify.com/v1/playlists/${newPlaylist.id}/tracks`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uris: recommendedUris })
-    });
-    
-    console.log('Successfully created playlist:', newPlaylist.external_urls.spotify);
-    res.json({ playlist_url: newPlaylist.external_urls.spotify });
+		// Add the recommended tracks to the new playlist
+		await fetch(
+			`https://api.spotify.com/v1/playlists/${newPlaylist.id}/tracks`,
+			{
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ uris: recommendedUris }),
+			}
+		);
 
-  } catch (err) {
-    console.error('Something went wrong in /recommendations endpoint!', err);
-    res.status(500).json({ error: 'Something went wrong!' });
-  }
+		// --- Step 4: Return the URL of the new playlist ---
+		console.log(
+			"Successfully created playlist:",
+			newPlaylist.external_urls.spotify
+		);
+		res.json({ playlist_url: newPlaylist.external_urls.spotify });
+	} catch (err) {
+		console.error("Something went wrong in /recommendations endpoint!", err);
+		res.status(500).json({ error: "Something went wrong!" });
+	}
 });
 
 // Starts the Express server.
