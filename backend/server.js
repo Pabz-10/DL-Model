@@ -165,12 +165,44 @@ app.get("/recommendations", async (req, res) => {
 			}
 		);
 
-		// --- Step 4: Return the URL of the new playlist ---
-		console.log(
-			"Successfully created playlist:",
-			newPlaylist.external_urls.spotify
-		);
-		res.json({ playlist_url: newPlaylist.external_urls.spotify });
+		// --- Step 4: Respond with a success page and a link to the playlist ---
+		const playlistUrl = newPlaylist.external_urls.spotify;
+		console.log("Successfully created playlist:", playlistUrl);
+
+		// Send a success page with a button to open the playlist.
+		// This is better than a script because it avoids pop-up blockers.
+		res.send(`
+        <html>
+            <head>
+                <title>Playlist Ready!</title>
+                <style>
+                    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #191414; color: white; margin: 0; text-align: center; }
+                    .container { max-width: 500px; }
+                    .playlist-btn {
+                        background-color: #1DB954;
+                        color: white;
+                        padding: 15px 30px;
+                        border: none;
+                        border-radius: 50px;
+                        font-size: 18px;
+                        text-decoration: none;
+                        cursor: pointer;
+                        font-weight: bold;
+                        display: inline-block;
+                        margin-top: 20px;
+                    }
+                    h1 { color: #1DB954; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Your "Song Recommender Picks" playlist is ready!</h1>
+                    <p>Click the button below to open your new playlist in Spotify.</p>
+                    <a href="${playlistUrl}" target="_blank" class="playlist-btn">Open Playlist</a>
+                </div>
+            </body>
+        </html>
+    `);
 	} catch (err) {
 		console.error("Something went wrong in /recommendations endpoint!", err);
 		res.status(500).json({ error: "Something went wrong!" });
