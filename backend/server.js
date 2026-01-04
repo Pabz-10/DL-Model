@@ -5,6 +5,8 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const REDIRECT_URI = process.env.REDIRECT_URI || 'http://127.0.0.1:3000/callback';
+const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://127.0.0.1:5000/predict';
 
 // Define the scopes for Spotify authorization.
 // These scopes determine what permissions the app is asking from the user.
@@ -17,11 +19,12 @@ const scopes = [
 const spotifyApi = new SpotifyWebApi({
   clientId: process.env.SPOTIFY_CLIENT_ID,
   clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-  redirectUri: process.env.REDIRECT_URI
+  redirectUri: REDIRECT_URI
 });
 
 // Serve static files from the 'public' directory.
 app.use(express.static(path.join(__dirname, 'public')));
+
 
 // Redirects the user to the Spotify authorization page.
 app.get('/login', (req, res) => {
@@ -90,7 +93,7 @@ app.get('/recommendations', async (req, res) => {
 
     // --- Step 2: Call the Python Model API ---
     console.log('Sending user top tracks to Python model API...');
-    const modelResponse = await fetch(process.env.MODEL_API_URL + '/predict', {
+    const modelResponse = await fetch(PYTHON_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ track_uris: topTrackUris })

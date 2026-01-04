@@ -1,9 +1,10 @@
 # Core data and ML libraries
 pandas
 scikit-learn
+numpy # Added explicitly as it's a core dependency
+tqdm
 
 # For creating the model API
 Flask
-
-# For saving/loading the trained model
 joblib
+gunicorn # Added for production deployment
