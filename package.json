@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "node-fetch-timeout": "^1.0.2"
+  }
+}
