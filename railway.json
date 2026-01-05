@@ -4,12 +4,14 @@
 		{
 			"name": "backend",
 			"rootDirectory": "backend",
+			"builder": "NIXPACKS",
 			"buildCommand": "npm install",
 			"startCommand": "npm start"
 		},
 		{
 			"name": "api",
 			"rootDirectory": "model",
+			"builder": "NIXPACKS",
 			"buildCommand": "pip install -r requirements.txt",
 			"startCommand": "gunicorn app:app --bind 0.0.0.0:$PORT"
 		}
