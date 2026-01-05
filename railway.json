@@ -1,16 +1,17 @@
 {
-  "$schema": "https://railway.app/railway.schema.json",
-  "services": [
-    {
-      "name": "backend",
-      "rootDirectory": "backend",
-      "startCommand": "npm start"
-    },
-    {
-      "name": "api",
-      "rootDirectory": "model",
-      "buildCommand": "pip install -r requirements.txt",
-      "startCommand": "gunicorn app:app --bind 0.0.0.0:$PORT"
-    }
-  ]
+	"$schema": "https://railway.app/railway.schema.json",
+	"services": [
+		{
+			"name": "backend",
+			"rootDirectory": "backend",
+			"buildCommand": "npm install",
+			"startCommand": "npm start"
+		},
+		{
+			"name": "api",
+			"rootDirectory": "model",
+			"buildCommand": "pip install -r requirements.txt",
+			"startCommand": "gunicorn app:app --bind 0.0.0.0:$PORT"
+		}
+	]
 }
