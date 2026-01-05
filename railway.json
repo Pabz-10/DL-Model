@@ -1,0 +1,22 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "services": [
+    {
+      "name": "backend",
+      "plugin": "nodejs",
+      "rootDirectory": "backend",
+      "startCommand": "npm start"
+    },
+    {
+      "name": "api",
+      "plugin": "python",
+      "rootDirectory": "model",
+      "build": {
+        "command": "pip install -r requirements.txt"
+      },
+      "start": {
+        "command": "gunicorn app:app --bind 0.0.0.0:$PORT"
+      }
+    }
+  ]
+}
